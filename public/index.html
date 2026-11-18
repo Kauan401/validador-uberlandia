@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Visualizador de PDF</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto">
+
+  <meta property="og:title" content="Visualizador de PDF">
+  
+
+  <style>
+
+    /* Abertura baseada nos elementos de carregamento do HTML enviado. */
+    #welcomeScreen {
+      position: fixed;
+      inset: 0;
+      z-index: 20000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #fff;
+      opacity: 1;
+      visibility: visible;
+      transition: opacity .45s ease, visibility .45s ease;
+    }
+    #welcomeScreen.escondida { opacity: 0; visibility: hidden; pointer-events: none; }
+    /* Zoom contínuo por transform, sem passos intermediários nem saltos. */
+    #welcomeLogo {
+      display: block;
+      width: clamp(190px, 32vw, 260px);
+      height: auto;
+      max-width: 68vw;
+      max-height: 42vh;
+      object-fit: contain;
+      opacity: 1;
+      transform-origin: 50% 50%;
+      transform: translate3d(0, 0, 0) scale(.88);
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      will-change: transform;
+      animation: welcomeZoom 2.2s linear both;
+    }
+    @keyframes welcomeZoom {
+      from { transform: translate3d(0, 0, 0) scale(.88); }
+      to   { transform: translate3d(0, 0, 0) scale(1.13); }
+    }
+    .intro-informativo {
+      position: absolute;
+      top: calc(50% + min(22vh, 170px));
+      left: 16px; right: 16px;
+      text-align: center;
+      font: 12px/1.45 Roboto, Arial, sans-serif;
+      color: #69707a;
+    }
+    #logoErro { display:none; text-align:center; color:#555; font: 13px Roboto,Arial,sans-serif; }
+    .welcome-progress {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 4px;
+      background: #d8edf9;
+      overflow: hidden;
+    }
+    .welcome-progress::before {
+      content: ''; display: block;
+      height: 100%; width: 35%;
+      background: #00a4ff;
+      animation: welcomeLoading 1.35s ease-in-out infinite;
+    }
+    @keyframes welcomeLoading {
+      0% { transform: translateX(-110%); }
+      100% { transform: translateX(390%); }
+    }
+    @media(prefers-reduced-motion:reduce) {
+      #welcomeScreen { transition: none; }
+      #welcomeLogo, .welcome-progress::before { animation: none; opacity: 1; transform: none; }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body { font-family: Roboto, Arial, sans-serif; color: #333; background: #fff; }
+    .sh-bar { margin: 0; width: 100%; }
+    .cabecalho-azul { background: #00a4ff; color: #fff; min-height: 168px; }
+    .cabecalho-azul .sh-container {
+      width: min(100% - 28px, 440px);
+      margin: 0 auto;
+      position: relative;
+      padding: 20px 48px 82px 0;
+      min-height: 168px;
+    }
+    .sh-bar__header { font-size: 14px; line-height: 1.4; color: #eefaff; }
+    .sh-bar__title { margin-top: 4px; font-size: 24px; font-weight: 700; line-height: 1.2; color: #fff; }
+
+    /* Pontinhos posicionados na extremidade direita do mesmo alinhamento do PDF. */
+    #share-fab-button {
+      position: absolute;
+      top: 13px;
+      right: 0;
+      width: 38px;
+      height: 46px;
+      margin: 0;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: 0;
+      border-radius: 4px;
+      appearance: none;
+      -webkit-appearance: none;
+      color: #fff;
+      cursor: pointer;
+      z-index: 5;
+    }
+    #share-fab-button:hover, #share-fab-button:focus-visible { background: rgba(255,255,255,.13); }
+    #share-fab-button svg { display: block; width: 23px; height: 23px; fill: currentColor; }
+    #share-fab-button::before, #share-fab-button::after { content: none !important; }
+
+    /* Prévia reduzida sem cortar ou esticar o PDF; link e botão ficam próximos. */
+    #rootElement { width: 100%; }
+    .sh-page {
+      width: min(calc(100% - 28px), 440px);
+      max-width: 440px;
+      margin: -76px auto 28px;
+      padding: 0;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      background: transparent;
+    }
+    #pdf-avatar {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      object-fit: contain;
+      background: white;
+      border: 0;
+      border-radius: 2px;
+      box-shadow: 0 7px 20px rgba(0,0,0,.22);
+    }
+    .sh-link {
+      display: block;
+      margin: 14px auto 18px;
+      font-size: 14px;
+      line-height: 20px;
+      text-align: center;
+      text-decoration: none;
+      color: #a1a8b5;
+      overflow-wrap: anywhere;
+    }
+    .sh-button--primary {
+      display: inline-flex;
+      width: 100%;
+      min-height: 50px;
+      padding: 14px;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      background: #00a5ff;
+      border-radius: 3px;
+      box-shadow: 0 2px 5px rgba(0,0,0,.2);
+      font-weight: 500;
+      font-size: 14px;
+      text-decoration: none;
+    }
+    .sh-button--primary:hover { background: #0095e7; }
+    .sh-button--primary svg { flex-shrink: 0; }
+
+    .pagina-modal { display: none; position: fixed; inset: 0; z-index: 10000; }
+    .pagina-modal.aberto { display: block; }
+    .pagina-modal .fixed-blur-bgd {
+      position: absolute; inset: 0;
+      display: flex; justify-content: center; align-items: center;
+      background: rgba(0,0,0,.48);
+    }
+    .pagina-modal .chat {
+      position: relative; display: block; width: min(92vw,380px);
+      max-height: 85vh; overflow-y: auto; background: #fff;
+      border-radius: 8px; box-shadow: 0 12px 35px rgba(0,0,0,.22);
+    }
+    .pagina-modal .fab-body { padding: 20px 22px; }
+    .pagina-modal .fab-header { margin-bottom: 16px; font-size: 19px; font-weight: 600; }
+    .pagina-modal ul { margin: 0; padding: 0; list-style: none; }
+    .pagina-modal li { margin: 0; padding: 11px 0; }
+    .pagina-modal a { text-decoration: none; color: #333; cursor: pointer; }
+    .pagina-modal a:hover { color: #00a5ff; }
+    .pagina-modal .botao-fechar { float: right; border: 0; background: none; cursor: pointer; font-size: 26px; line-height: 1; color: #666; }
+    .pagina-modal #shortUrl { width: 70%; max-width: 260px; padding: 8px; }
+    .pagina-modal #copyButton { padding: 8px; cursor: pointer; }
+    #copyMessage { display: none; color: #16803d; font-size: 13px; padding-top: 7px; }
+    @media (min-width: 750px) {
+      .cabecalho-azul .sh-container, .sh-page { max-width: 405px; }
+    }
+    @media (max-width: 480px) {
+      .cabecalho-azul .sh-container { padding-top: 17px; }
+      .sh-bar__header { font-size: 12px; }
+      .sh-bar__title { font-size: 21px; }
+      .sh-page { margin-top: -76px; }
+    }
+  </style>
+</head>
+<body class="sh-body">
+  <!-- Imagem de abertura exatamente referenciada no bh5yiL.html enviado. -->
+  <div id="welcomeScreen" aria-label="Carregando visualizador" role="status">
+    <div class="welcome-progress" aria-hidden="true"></div>
+    <img id="welcomeLogo"
+      src="https://qrcgcustomers.s3-eu-west-1.amazonaws.com/account52347843/59325788_1.png?0.8610908671500467"
+      alt="Imagem de abertura do HTML original">
+    <div id="logoErro" aria-live="polite">Imagem da abertura indisponível no servidor original.</div>
+    </div>
+
+  <div class="sh-bar">
+    <div class="cabecalho-azul">
+      <div class="sh-container">
+        <!-- Três pontos à direita, alinhados com a borda da prévia. -->
+        <button type="button" id="share-fab-button" aria-label="Abrir menu de compartilhamento" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="4" r="2.1" />
+            <circle cx="12" cy="12" r="2.1" />
+            <circle cx="12" cy="20" r="2.1" />
+          </svg>
+        </button>
+        <div class="sh-bar__header">Saúde - Portal da Prefeitura de Uberlândia</div>
+        <div class="sh-bar__title">Visualizador de PDF</div>
+      </div>
+    </div>
+
+    <div id="rootElement">
+      <div class="sh-page sh-page--has-link">
+        <img id="pdf-avatar" class="sh-avatar" alt="Prévia do documento" src="https://i.ibb.co/VWx1m3xt/20261118-131354.jpg">
+        <div class="sh-link">www.uberlandia.mg.gov.br</div>
+        <a id="pdf-link" class="sh-button sh-button--primary" href="https://cdn.qr-code-generator.com/account52347843/59325785_2.pdf?Expires=1795091198&amp;Signature=UhGrE6Idej1Zv4vfbTmJueFjH~a53xkJ2VqfBQ5wIQAC0sQ0snJTUSjsKY5B9KuZDoVdpikVHqhyPADiMClITjU5PJGNe1g1Lvy8NiSbdX-DlXvTFXKma9PeBpSfGmlQa~oOilvFeetoszQ2f7sZc5sBU3VVDDH4~WDUoT7JIaPQBNKhAyP8HSKCfB08MDjjETI4hzm2KDp7CQubWQjeEbfGAjj6euumf2QRVUUbafZbEjkd4ZQgHD6lD4NHLG0fUa~baAvqred-lcM9ZGSMcRZfkvoH4GD~tAW8rsolE0UVZbN48AijS5fBKD91Y6pKaT2WTYzivpW8k9d6LFqrxA__&amp;Key-Pair-Id=KPNI74OVB7CJI" target="_blank" rel="noopener noreferrer">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+          Ver PDF
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Primeiro menu, aberto ao clicar nos três pontinhos. -->
+  <div class="pagina-modal" id="saveMenu" role="dialog" aria-modal="true" aria-label="Menu de opções">
+    <div class="fixed-blur-bgd">
+      <div class="chat"><div class="fab-body">
+        <button class="botao-fechar" type="button" aria-label="Fechar menu" data-close="saveMenu">×</button>
+        <ul><li><a href="#" id="openShare">Compartilhar PDF</a></li></ul>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- Menu Compartilhar página, mantido funcional. -->
+  <div class="pagina-modal" id="shareFab2" role="dialog" aria-modal="true" aria-label="Compartilhar página">
+    <div class="fixed-blur-bgd">
+      <div class="chat"><div class="fab-body">
+        <button class="botao-fechar" type="button" aria-label="Fechar compartilhamento" data-close="shareFab2">×</button>
+        <div class="fab-header" style="color: #00a5ff">Compartilhar página</div>
+        <ul>
+          <li><a href="https://www.facebook.com/sharer/sharer.php" id="facebookShare" target="_blank" rel="noopener noreferrer">Facebook</a></li>
+          <li><a href="https://twitter.com/intent/tweet" id="xShare" target="_blank" rel="noopener noreferrer">X</a></li>
+          <li><a href="mailto:" id="emailShare">Email</a></li>
+          <li>
+            <input id="shortUrl" value="" readonly aria-label="Link da página">
+            <button id="copyButton" type="button">Copiar</button>
+            <div id="copyMessage" role="status">Texto copiado!</div>
+          </li>
+        </ul>
+      </div></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // Carrega a imagem original da introdução, sem o antigo ícone azul de papel.
+      var logo = document.getElementById('welcomeLogo');
+      logo.addEventListener('error', function () {
+        logo.style.display = 'none';
+        document.getElementById('logoErro').style.display = 'block';
+      });
+      // O zoom usa apenas uma interpolação contínua e suave do início ao fim.
+      // e então desaparece em fade para revelar a página.
+      window.setTimeout(function () {
+        var intro = document.getElementById('welcomeScreen');
+        intro.classList.add('escondida');
+        window.setTimeout(function () { intro.remove(); }, 500);
+      }, 2300);
+      // Compartilhar sempre a URL desta página, em vez de apontar para outra página.
+      var url = window.location.href;
+      document.getElementById('shortUrl').value = url;
+      document.getElementById('facebookShare').href = 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url);
+      document.getElementById('xShare').href = 'https://twitter.com/intent/tweet?url=' + encodeURIComponent(url);
+      document.getElementById('emailShare').href = 'mailto:?body=' + encodeURIComponent(url);
+
+      var menuButton = document.getElementById('share-fab-button');
+      var mainMenu = document.getElementById('saveMenu');
+      var shareMenu = document.getElementById('shareFab2');
+
+      function openMenu(menu) {
+        mainMenu.classList.remove('aberto');
+        shareMenu.classList.remove('aberto');
+        menu.classList.add('aberto');
+        menuButton.setAttribute('aria-expanded', 'true');
+      }
+      function closeMenus() {
+        mainMenu.classList.remove('aberto');
+        shareMenu.classList.remove('aberto');
+        menuButton.setAttribute('aria-expanded', 'false');
+      }
+      menuButton.addEventListener('click', function () { openMenu(mainMenu); });
+      document.getElementById('openShare').addEventListener('click', function (e) {
+        e.preventDefault(); openMenu(shareMenu);
+      });
+      document.querySelectorAll('[data-close]').forEach(function (button) {
+        button.addEventListener('click', closeMenus);
+      });
+      document.querySelectorAll('.pagina-modal .fixed-blur-bgd').forEach(function (overlay) {
+        overlay.addEventListener('click', function (e) {
+          if (e.target === overlay) closeMenus();
+        });
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeMenus();
+      });
+      document.getElementById('copyButton').addEventListener('click', async function () {
+        var field = document.getElementById('shortUrl');
+        var copied = false;
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(field.value);
+            copied = true;
+          } else {
+            field.select(); copied = document.execCommand('copy');
+          }
+        } catch (e) { copied = false; }
+        var message = document.getElementById('copyMessage');
+        message.textContent = copied ? 'Texto copiado!' : 'Selecione e copie o endereço do campo.';
+        message.style.display = 'block';
+      });
+    })();
+  </script>
+</body>
+</html>
